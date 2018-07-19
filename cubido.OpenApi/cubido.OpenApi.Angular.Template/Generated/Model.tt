@@ -1,0 +1,71 @@
+﻿<#@ assembly name="System.Core" #>
+<#@ assembly name="$(TargetDir)cubido.OpenApi.dll" #>
+<#@ assembly name="$(TargetDir)cubido.OpenApi.Angular.dll" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="cubido.OpenApi.Extensions" #>
+<#@ import namespace="cubido.OpenApi.Angular.Extensions" #>
+<#@ import namespace="cubido.OpenApi.Models" #>
+<#@ import namespace="cubido.OpenApi.Models.Types" #>
+<#@ parameter name="model" type="cubido.OpenApi.Models.Model" #>
+<#@ parameter name="options" type="cubido.OpenApi.Angular.Template.ConvertOptions" #>
+<#@ include file="Header.tt" #>
+<#
+	foreach (var otherModel in model.ImportedModels.OrderBy(otherModel1 => otherModel1.Name))
+	{
+#>
+import { <#= otherModel.GetImportSelector() #> } from './<#= otherModel.GetFilename() #>';
+<#
+	}
+#>
+<# if (model.NeedsServiceHelper()) { #>
+import { ServiceHelper } from '../shared/service-helper';
+<#
+}
+#>
+
+<# if (!String.IsNullOrWhiteSpace(model.Description))
+{
+#>
+/**
+ * <#= model.Description #>
+ */
+<#
+}
+#>
+export class <#= model.Name #> {
+<#
+	foreach (var property in model.Properties)
+	{
+#>
+<#		if (!String.IsNullOrWhiteSpace(property.Description))
+		{
+#>
+    /**
+     * <#= property.Description #>
+     */
+<#
+		}
+#>
+    public <#= property.Name #>: <#= property.Type.ToTypeScriptType() #>;
+<#
+	}
+	string initObjName = model.Name.ToLowerCamelCase();
+#>
+
+    constructor(<#= initObjName #>: <#= model.Name #> | any = null) {
+        if (<#= initObjName #>) {
+            Object.assign(this, <#= initObjName #>);
+<#
+	foreach (var property in model.Properties)
+	{
+		if (!property.Type.IsPrimitive())
+		{
+#>
+            this.<#= property.Name #> = <#= Template.TransformConstructor(property.Type, "this." + property.Name) #>;
+<#
+		}
+	}
+#>
+        }
+    }
+}

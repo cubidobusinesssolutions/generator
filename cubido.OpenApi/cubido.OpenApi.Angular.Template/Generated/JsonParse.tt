@@ -1,0 +1,27 @@
+﻿<#@ assembly name="$(TargetDir)cubido.OpenApi.dll" #>
+<#@ assembly name="$(TargetDir)cubido.OpenApi.Angular.dll" #>
+<#@ import namespace="cubido.OpenApi.Angular" #>
+<#@ import namespace="cubido.OpenApi.Extensions" #>
+<#@ import namespace="cubido.OpenApi.Models.Types" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ parameter name="responseType" type="cubido.OpenApi.Models.Types.AbstractType" #>
+<#
+if (responseType.IsPrimitive())
+{
+#>
+response<#
+}
+else if (responseType is ArrayType)
+{
+	var arrayType = (ArrayType)responseType;
+#>
+response.map(item => new <#= arrayType.Inner.ToTypeScriptType() #>(item))<#
+}
+else
+{
+#>
+new <#= responseType.ToTypeScriptType() #>(response)<#
+}
+#>

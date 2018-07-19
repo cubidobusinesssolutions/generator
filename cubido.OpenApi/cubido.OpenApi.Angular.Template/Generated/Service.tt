@@ -1,0 +1,229 @@
+﻿<#@ assembly name="$(TargetDir)cubido.OpenApi.dll" #>
+<#@ assembly name="$(TargetDir)cubido.OpenApi.Angular.dll" #>
+<#@ import namespace="cubido.OpenApi.Angular.Extensions" #>
+<#@ import namespace="cubido.OpenApi.Angular.Template.Generated" #>
+<#@ import namespace="cubido.OpenApi.Extensions" #>
+<#@ import namespace="cubido.OpenApi.Models" #>
+<#@ import namespace="cubido.OpenApi.Models.Types" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ parameter name="controller" type="cubido.OpenApi.Models.Controller" #>
+<#@ parameter name="options" type="cubido.OpenApi.Angular.Template.ConvertOptions" #>
+<#@ include file="Header.tt" #>
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs/Observable';
+// tslint:disable-next-line:no-unused-variable
+import { map } from 'rxjs/operators';
+// tslint:disable-next-line:no-unused-variable
+import { ServiceHelper } from 'app/<#= options.HelpersDirectoryName #>/service-helper';
+<#
+if (options.HasBaseUrl)
+{
+#>
+import { environment } from 'environments/environment';
+<#
+}
+foreach (var model in controller.ReferencedModels.OrderBy(model1 => model1.Name))
+{
+#>
+import { <#= model.GetImportSelector() #> } from '<#= options.ModelsRelativePath #><#= model.GetFilename() #>';
+<#
+}
+#>
+<#
+if (options.HasBaseUrl)
+{
+#>
+
+const BASE_URL = environment.<#= options.BaseUrl #>;
+<#
+}
+#>
+
+<#
+if (!String.IsNullOrWhiteSpace(controller.Description))
+{
+#>
+/**
+ * <#= controller.Description #>
+ */
+<#
+}
+#>
+@Injectable()
+export class <#= controller.Name.ToUpperCamelCase() #>Service {
+
+  constructor(private http: HttpClient) {}
+<#
+foreach (var operation in controller.Operations) 
+{
+#>
+
+  // <#= operation.HttpMethod.ToString().ToUpper() #> <#= operation.Path #>
+  /**
+<#
+    if (!String.IsNullOrWhiteSpace(operation.Summary))
+    {
+#>
+   * <#= operation.Summary ?? "" #>
+<#
+    }
+    foreach (var parameter in operation.Parameters)
+    {
+#>
+   * @param {<#= parameter.Type.ToTypeScriptType() #>} <#= parameter.Name.ToLowerCamelCase() #><#= String.IsNullOrWhiteSpace(parameter.Description) ? "" : " " + parameter.Description #>
+<#
+    }
+#>
+   */
+  public <#= operation.Name #>(<#= String.Join(", ", operation.Parameters.OrderBy(parameter => !parameter.IsRequired).Select(parameter => parameter.Name.ToLowerCamelCase() + (parameter.IsRequired ? "" : "?") + ": " + parameter.Type.ToTypeScriptType())) #>): Observable<<#= operation.ResponseType == null ? "any" : operation.ResponseType.ToTypeScriptType() #>> {
+<#
+    var queryParameters = operation.Parameters.Where(p => p.Location == OperationParameterLocation.Query);
+    var hasQueryParameters = queryParameters.Any();
+    var headerParameters = operation.Parameters.Where(p => p.Location == OperationParameterLocation.Header);
+    var hasHeaderParameters = headerParameters.Any();
+    var bodyParameter = operation.Parameters.SingleOrDefault(p => p.Location == OperationParameterLocation.Body);
+    var formParameters = operation.Parameters.Where(p => p.Location == OperationParameterLocation.FormData);
+    var hasFormParameters = formParameters.Any();
+    if (hasQueryParameters)
+    {
+#>
+    const params = ServiceHelper.getParams({
+      <#
+        var first = true;
+        foreach (var parameter in queryParameters)
+        {
+            if (!first)
+            {
+#>,
+      <#
+            }
+#><#= Template.TransformServiceParameter(parameter) #><#
+            first = false;
+        }
+#>
+
+    });
+<#
+    }
+    if (hasFormParameters)
+    {
+#>
+    const body = ServiceHelper.getFormBody({
+      <#
+            var first = true;
+            foreach (var parameter in formParameters)
+            {
+                if (!first)
+            {
+#>,
+      <#
+            }
+#><#= Template.TransformServiceParameter(parameter) #><#
+            first = false;
+        }
+#>
+
+    });
+<#
+    }
+    if (hasHeaderParameters)
+    {
+#>
+    const headers = ServiceHelper.getHeaders({
+      <#
+            var first = true;
+            foreach (var parameter in headerParameters)
+            {
+                if (!first)
+            {
+#>,
+      <#
+            }
+#><#= Template.TransformServiceParameter(parameter) #><#
+            first = false;
+        }
+#>
+
+    });
+<#
+    }
+    var httpMethod = operation.HttpMethod.ToString().ToLowerCamelCase();
+    var path = operation.Path.ToTypeScriptInterpolated();
+    if (options.HasBaseUrl)
+    {
+        path = "${BASE_URL}" + path;
+    }
+#>
+    return this.http.<#= httpMethod #><#
+    if (operation.ResponseType == null || operation.ResponseType is StringType)
+    {
+    }
+    else if (operation.ResponseType.IsPrimitive())
+    {
+#><<#= operation.ResponseType.ToTypeScriptType()#>><#
+    }
+    else if (operation.ResponseType is ArrayType)
+    {
+#><any[]><#
+    }
+#>(`<#= path #>`<#
+    if (bodyParameter != null)
+    {
+#>, <#
+        // avoid string being interpreted as json
+        if (bodyParameter.Type is StringType)
+        {
+#>JSON.stringify(<#
+        }
+#><#= bodyParameter.Name.ToLowerCamelCase() #><#
+        if (bodyParameter.Type is StringType)
+        {
+#>)<#
+        }
+#><#
+    }
+    if (hasFormParameters)
+    {
+#>, body<#
+    }
+
+    // TODO: null body if patch without body
+    var requestOptions = new List<string>();
+    if (hasQueryParameters) {
+        requestOptions.Add("params");
+    }
+    if (hasHeaderParameters) {
+        requestOptions.Add("headers");
+    }
+    // avoid string being interpreted as json
+    if (operation.ResponseType == null || operation.ResponseType is StringType)
+    {
+        requestOptions.Add("responseType: 'text'");
+    }
+
+    if (requestOptions.Any())
+    {
+#>, { <#= String.Join(", ", requestOptions) #> }<#
+    }
+#>)<#
+    if (operation.ResponseType != null)
+    {
+        var responseType = operation.ResponseType;
+        if (!responseType.IsPrimitive())
+        {
+#>
+.pipe(
+      map(response => <#= Template.TransformConstructor(responseType, "response") #>)
+    )<#
+        }
+    }
+#>;
+  }
+<#
+}
+#>
+}
